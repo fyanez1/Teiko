@@ -21,6 +21,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from cellcount import DB_PATH, POPULATIONS, connect, query
+from cellcount.db import SCHEMA_PATH
 from cellcount.stats import (
     ALPHA,
     GROUP_COLOURS,
@@ -157,7 +158,7 @@ ensure_database()
 overview = db_overview()
 options = cohort_options()
 
-st.title("🧬 Loblaw Bio - immune cell population dashboard")
+st.title("Loblaw Bio - immune cell population dashboard")
 st.caption(
     f"Source: `{DB_PATH.name}` - {overview['projects']} projects, {overview['subjects']:,} subjects, "
     f"{overview['samples']:,} samples, {overview['cell_counts']:,} cell-count records. "
@@ -180,6 +181,10 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Populations**: " + ", ".join(f"`{p}`" for p in POPULATIONS))
     st.markdown("Reproduce everything with `make pipeline`; outputs are written to `outputs/`.")
+    st.markdown("---")
+    st.markdown("**Source code:** [github.com/fyanez1/Teiko](https://github.com/fyanez1/Teiko)")
+    with st.expander("Database schema (SQL)"):
+        st.code(SCHEMA_PATH.read_text(encoding="utf-8"), language="sql")
 
 tab2, tab3, tab4 = st.tabs([
     "Part 2 · Cell frequencies", "Part 3 · Responders vs non-responders", "Part 4 · Baseline subsets",
@@ -195,19 +200,24 @@ with tab2:
     )
     data = load_summary_with_metadata()
 
-    f1, f2, f3, f4, f5, f6 = st.columns(6)
-    with f1:
-        sel_project = st.multiselect("Project", options["projects"], default=options["projects"])
-    with f2:
-        sel_condition = st.multiselect("Condition", options["all_conditions"], default=options["all_conditions"])
-    with f3:
-        sel_treatment = st.multiselect("Treatment", options["all_treatments"], default=options["all_treatments"])
-    with f4:
-        sel_type = st.multiselect("Sample type", options["sample_type"], default=options["sample_type"])
-    with f5:
-        sel_time = st.multiselect("Time point (days)", options["time"], default=options["time"])
-    with f6:
-        sel_pop = st.multiselect("Population", POPULATIONS, default=POPULATIONS)
+    row1 = st.columns(3)
+    with row1[0]:
+        sel_project = st.pills("Project", options["projects"], selection_mode="multi",
+                               default=options["projects"])
+    with row1[1]:
+        sel_condition = st.pills("Condition", options["all_conditions"], selection_mode="multi",
+                                 default=options["all_conditions"])
+    with row1[2]:
+        sel_treatment = st.pills("Treatment", options["all_treatments"], selection_mode="multi",
+                                 default=options["all_treatments"])
+    row2 = st.columns(3)
+    with row2[0]:
+        sel_type = st.pills("Sample type", options["sample_type"], selection_mode="multi",
+                            default=options["sample_type"])
+    with row2[1]:
+        sel_time = st.pills("Time point (days)", options["time"], selection_mode="multi", default=options["time"])
+    with row2[2]:
+        sel_pop = st.pills("Population", POPULATIONS, selection_mode="multi", default=POPULATIONS)
 
     filtered = data[
         data["project"].isin(sel_project) & data["condition"].isin(sel_condition)
@@ -289,13 +299,16 @@ with tab3:
         s_r = df.loc[df["response"] == "yes", "subject"].nunique()
         s_nr = df.loc[df["response"] == "no", "subject"].nunique()
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Responder samples", n_r, f"{s_r} subjects", delta_color="off")
-        k2.metric("Non-responder samples", n_nr, f"{s_nr} subjects", delta_color="off")
         sig = stats.loc[stats["significant"], "population"].tolist()
         nominal = stats.loc[stats["mannwhitney_p"] < alpha, "population"].tolist()
-        k3.metric("Significant after FDR (BH)", len(sig), ", ".join(sig) if sig else "none", delta_color="off")
-        k4.metric(f"Nominal p < {alpha}", len(nominal), ", ".join(nominal) if nominal else "none",
-                  delta_color="off")
+        k1.metric("Responder samples", n_r)
+        k1.caption(f"from {s_r} subjects")
+        k2.metric("Non-responder samples", n_nr)
+        k2.caption(f"from {s_nr} subjects")
+        k3.metric("Significant after FDR (BH)", len(sig))
+        k3.caption(", ".join(sig) if sig else "none")
+        k4.metric(f"Nominal p < {alpha}", len(nominal))
+        k4.caption(", ".join(nominal) if nominal else "none")
 
         st.markdown("#### Boxplots - one panel per population")
         plot_df = analysis_df.copy()
@@ -310,12 +323,18 @@ with tab3:
         fig.update_yaxes(matches=None, showticklabels=True)
         fig.update_xaxes(showticklabels=False)
         lookup = stats.set_index("population")
-        fig.for_each_annotation(lambda a: a.update(text=(
-            f"{a.text.split('=')[-1]}{' *' if bool(lookup.loc[a.text.split('=')[-1], 'significant']) else ''}"
-            f"<br><sup>p={fmt_p(lookup.loc[a.text.split('=')[-1], 'mannwhitney_p'])}, "
-            f"q={fmt_p(lookup.loc[a.text.split('=')[-1], 'mannwhitney_p_adj'])}, "
-            f"δ={lookup.loc[a.text.split('=')[-1], 'cliffs_delta']:+.2f}</sup>")))
-        fig.update_layout(height=480, legend_title_text="", margin=dict(t=70, b=20))
+        def facet_title(annotation):
+            population = annotation.text.split("=")[-1]
+            row = lookup.loc[population]
+            star = " *" if bool(row["significant"]) else ""
+            annotation.update(
+                text=f"<b>{population}{star}</b><br>p={fmt_p(row['mannwhitney_p'])}, "
+                     f"q={fmt_p(row['mannwhitney_p_adj'])}, δ={row['cliffs_delta']:+.2f}",
+                font=dict(size=12), yshift=8,
+            )
+
+        fig.for_each_annotation(facet_title)
+        fig.update_layout(height=500, legend_title_text="", margin=dict(t=80, b=20))
         st.plotly_chart(fig)
         st.caption("p = two-sided Mann-Whitney U; q = Benjamini-Hochberg adjusted p across the five populations; "
                    "δ = Cliff's delta (> 0: higher in responders). * marks q < α.")
@@ -425,8 +444,9 @@ with tab4:
     st.markdown("#### Average B-cell count - melanoma males, responders, time 0")
     st.markdown("All sample types and all treatment types are included, as specified in the brief.")
     avg = base["avg_b_cells"]
-    st.metric("Mean b_cell count", "n/a" if avg is None else f"{avg:,.2f}",
-              f"n = {base['avg_b_cells_n']} samples", delta_color="off")
+    st.metric("Mean b_cell count", "n/a" if avg is None else f"{avg:,.2f}")
+    st.caption(f"n = {base['avg_b_cells_n']} samples (melanoma, male, response = yes, "
+               "time_from_treatment_start = 0; all sample types and treatments)")
 
     with st.expander("Explore: average count for any subset"):
         e1, e2, e3, e4 = st.columns(4)
@@ -442,5 +462,5 @@ with tab4:
         with e4:
             sample_type_e = option_or_all("Sample type", options["sample_type"], "exp_type")
         avg_e, n_e = explore_average(population, condition_e, sex_e, response_e, time_e, treatment_e, sample_type_e)
-        st.metric(f"Mean {population} count", "n/a" if avg_e is None else f"{avg_e:,.2f}",
-                  f"n = {n_e} samples", delta_color="off")
+        st.metric(f"Mean {population} count", "n/a" if avg_e is None else f"{avg_e:,.2f}")
+        st.caption(f"n = {n_e} samples")

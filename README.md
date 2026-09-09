@@ -10,7 +10,7 @@ candidate (**miraclib**) affects immune cell populations, built around the four 
 | 3 | Do melanoma patients on miraclib who respond differ from non-responders? (PBMC only) | `cellcount/stats.py` -> `outputs/part3_*` |
 | 4 | Baseline (day 0) melanoma PBMC samples from miraclib patients; the B-cell question | `cellcount/subsets.py` -> `outputs/part4_*` |
 
-**Dashboard:** https://REPLACE-WITH-YOUR-APP.streamlit.app (hosted on Streamlit Community Cloud; see
+**Dashboard:** https://teiko-fabian.streamlit.app/ (hosted on Streamlit Community Cloud; see
 [Dashboard](#dashboard)). It also runs locally with `make dashboard`.
 
 ---
@@ -248,9 +248,11 @@ so a fresh clone or a cloud deployment works without extra steps):
   charts, the list of baseline samples, the B-cell answer, and an explorer to compute the average count of
   any population for any subset.
 
-**Publishing the link.** The app is deployed on Streamlit Community Cloud
-(https://share.streamlit.io -> *New app* -> this repository, branch `main`, main file `dashboard/app.py`).
-Because the database and `requirements.txt` are in the repository, no further configuration is needed.
+**Hosted version.** The app is deployed on Streamlit Community Cloud at
+https://teiko-fabian.streamlit.app/ (https://share.streamlit.io -> *New app* -> this repository, branch `main`,
+main file `dashboard/app.py`). Because the database and `requirements.txt` are in the repository, no further
+configuration is needed, and every push to `main` redeploys it. Community Cloud puts idle apps to sleep: if the
+page shows a *"get this app back up"* button, click it and allow about 30 seconds for the app to restart.
 
 ## Assumptions and notes
 
